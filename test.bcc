@@ -1,0 +1,11 @@
+/*
+int y = 10;
+int k[10];
+string s;
+string ss = "hello";
+*/
+int x;
+println("HELLO");
+print("Hello\nprint\n");
+print("Hey is %d %d %d it", x, y, z);
+print("%x", z);
