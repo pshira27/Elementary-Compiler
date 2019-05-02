@@ -24,6 +24,13 @@ global_if_counter = 0
 reg_order = ["rcx", "rdx", "r8", "r9"]
 
 #------------------------------------ Get Set Add Function
+def print_error(error_str, show_line=True):
+    if show_line:
+        print("ERROR : %s At line %d" % (error_str, lexer.lineno))
+    else:
+        print("ERROR : %s" % error_str)
+    sys.exit(1)
+
 def getHeader():
     global asmheader
     return asmheader
@@ -38,13 +45,15 @@ def getLeave():
     return asmleave
 
 def getFunction(tuple):
-    print("-", tuple[1])
-    if tuple[0] is not "Start": #Found an error or EoF
-        print("Found an EoF")
-        return "BREAK"
-    else:
-        curTuple = tuple[1]
-        return curTuple[0].upper()
+    if tuple is not None:
+        print("-", tuple[1])
+        if (tuple[0] == "Start") or (tuple[0] == "Statement"): 
+            curTuple = tuple[1]
+            return curTuple[0].upper()
+        else: #Found an error or EoF
+            print("Found an EoF")
+            return "BREAK"
+        
 
 def get_var(symbol):
     if symbol in global_var:
@@ -64,6 +73,7 @@ def getMultival(stm):
     while(ptr[0] == "MultiValue"):
         strVal += ", " + ptr[1]
         ptr = ptr[2]
+    strVal += ", " + ptr
     return strVal
 
 def getListval(stm):
@@ -80,7 +90,7 @@ def getListval(stm):
                 listVal.append(_stm[0])
     return listVal
 
-def addData(varName, value):
+def addData(varName, value, arr=""):
     global asmdata
     asmdata += "%s db %s\n" % (varName, value)
 
@@ -91,6 +101,7 @@ def addText(cmd = ""):
 def addComment(cmd = ""):
     global asmtext
     asmtext += ";" + cmd +"\n"
+
 #------------------------------------ Declare Function
 def declare_string(text):
     global global_str_counter
@@ -114,11 +125,11 @@ def declare_var(var_name, value, assign=None):
     global asmdata
 
     if var_name in global_var:
-        print("Error!, Duplicate var is declared")
+        print_error("Error!, Duplicate var is declared")
     else:
         global_var.append(var_name)
         if assign is None:
-            addData(var_name, value)
+            asmdata += var_name + " dq " + value + "\n"
         elif assign == "arrayDup":
             asmdata += var_name + " times " + str(value) + " dq 0" + "\n"
 
@@ -148,6 +159,8 @@ def declacration_routine(stm):
                 declare_var(temp[1], temp[3])
         elif temp[0] == "AssignString":
             print("sth")
+        elif temp[0] == "IF":
+            print("")
         else:
             print("I think something went wrong :T")
 
@@ -156,20 +169,56 @@ def operation_routine(stm):
 
 def expression_routine(stm):
     print("expression_routine")
+    var = stm[1]
+    opt = stm[2]
+    if var in global_var or var[1] in global_var:
+        if opt == "=":
+            assign_val = stm[3]
+            if type(var) == tuple:
+                var_name = var[1]
+                index_arr = var[3]
+            else:
+                var_name = var
+        elif opt == "++":
+            if type(var) == tuple:
+                var_name = var[1]
+                index_arr = var[3]
+                addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
+                addText("inc rax")
+                addText("mov [%s + %s * 8], rax" % (var_name, index_arr))
+            else:
+                var_name = var
+                addText("mov rax, [%s]" % var_name)
+                addText("inc rax")
+                addText("mov [%s], rax" % var_name)
+        elif opt == "--":
+            if type(var) == tuple:
+                var_name = var[1]
+                index_arr = var[3]
+                addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
+                addText("dec rax")
+                addText("mov [%s + %s * 8], rax" % (var_name, index_arr))
+            else:
+                var_name = var
+                addText("mov rax, [%s]" % var_name)
+                addText("dec rax")
+                addText("mov [%s], rax" % var_name)
+        else:
+            pass
+            
 
 def print_routine(stm):
     print("-> print_routine")
     text = stm[1]
     if "%d" in text or "%x" in text:
-        lists = getListval(stm[2])
-        print(lists)
-
-    texts = get_str(text)
-    addText("mov rcx, %s" % texts)
-    addText("call printf")
-    addText("xor %s, %s" % (reg_order[0], reg_order[0]))
-    addText("call " + fflush_label)
-    addText()
+        print()
+    else:
+        texts = get_str(text)
+        addText("mov rcx, %s" % texts)
+        addText("call printf")
+        addText("xor %s, %s" % (reg_order[0], reg_order[0]))
+        addText("call " + fflush_label)
+        addText()
 
 def println_routine(stm):
     _stm = list(stm)
@@ -178,41 +227,162 @@ def println_routine(stm):
     _stm[1] = texts
     print_routine(tuple(_stm))
 
+def if_routine(stm):
+    global global_if_counter
+    global_if_counter += 1
+    stm_inside = stm[2]
+    cmp_inside = stm[1]
+    exit_c = global_if_counter
+
+    print(stm_inside)
+    addComment("----  If %s " % global_if_counter)
+    # CMP routine
+    cmp_routine(cmp_inside)
+    try:
+        getElse = stm[3]
+        if getElse[0] == "else":
+            statement_main(getElse)
+        else:
+            if_routine(getElse)
+    except:
+        pass
+    #------------
+    statement_main(stm_inside)
+    addText("_L%d:" % exit_c)
+    addComment("---- Exit ----")
+    addText()
+    
+def cmp_routine(stm, exit=None):
+    index_arr = 0
+    var_a = stm[1]
+    var_b = stm[3]
+    cmp_type = stm[2]
+    if exit == None:
+        exit_l = global_if_counter
+    else:
+        exit_l = exit
+
+    try:
+        var_a = int(var_a)
+    except:
+        pass
+    try:
+        var_b = int(var_b)
+    except:
+        pass
+
+    if type(var_a) == tuple:
+        var_name = var_a[1]
+        index_arr = var_a[3]
+        addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
+    elif type(var_a) == str:
+        var_name = var_a
+        addText("mov rax, [%s]" % var_name)
+    else:
+        var_name = var_a
+        addText("mov rax, %s" % var_name)
+
+    if type(var_b) == tuple:
+        var_name = var_b[1]
+        index_arr = var_b[3]
+        addText("mov rbx, [%s + %s * 8]" % (var_name, index_arr))
+    elif type(var_b) == str:
+        var_name = var_b
+        addText("mov rbx, [%s]" % var_name)
+    else:
+        var_name = var_b
+        addText("mov rbx, %s" % var_name)
+
+    addText("cmp rax, rbx")
+    if cmp_type == "==":
+        addText("jne _L%d" % exit_l)
+    elif cmp_type == ">":
+        addText("jle _L%d" % exit_l)
+    elif cmp_type == ">=":
+        addText("jl _L%d" % exit_l)
+    elif cmp_type == "<":
+        addText("jge _L%d" % exit_l)
+    elif cmp_type == "<=":
+        addText("jg _L%d" % exit_l)
+    addComment()
+
+def whileloop_routine(stm):
+    global global_if_counter
+    loop_c = global_if_counter
+    exit_c = loop_c + 1
+
+    cmp_inside = stm[1]
+    stm_inside = stm[2]
+
+    addText("_L%d:" % loop_c)
+    global_if_counter += 1
+    cmp_routine(cmp_inside)
+    global_if_counter += 1
+    statement_main(stm_inside)
+    addText("jmp _L%d" % loop_c)
+    addText("_L%d:" % exit_c)
+
+def do_routine(stm):
+    global global_if_counter
+    global global_if_counter
+    loop_c = global_if_counter
+    exit_c = loop_c + 1
+
+    cmp_inside = stm[3]
+    stm_inside = stm[1]
+
+    addText("_L%d:" % loop_c)
+    global_if_counter += 1
+    statement_main(stm_inside)
+    cmp_routine(cmp_inside, exit_c)
+    addText("jmp _L%d" % loop_c)
+    addText("_L%d:" % exit_c)
+
+
 #------------------------------------ ASM init
 addData("_fmin", '"%ld", 0')
-addComment("- Start Here")
+addComment("Start Program")
 addText("push rbp")
 addText()
 
 #------------------------------------ Main is here
 def statement_main(tuple):
-    currentTuple = tuple
-    while(True):
-        state = getFunction(currentTuple)
-        stateTuple = currentTuple[1]
-        print("",state)
-        if state == "BREAK":
-            addText("")
-            addComment("terminate program")
-            addText(asmleave)
-            break
-        elif state == "DECLARATION":
-            print("")
-            declacration_routine(stateTuple)
-        elif state == "EXPRESSION":
-            print("")
-            expression_routine(stateTuple)
-        elif state == "PRINT":
-            print("")
-            print_routine(stateTuple)
-        elif state == "PRINTLN":
-            print("")
-            println_routine(stateTuple)
-        elif state == "FORLOOP":
-            print("")
-        elif state == "WHILELOOP":
-            print("")
+    if tuple is not None:
+        currentTuple = tuple
+        while(True):
+            state = getFunction(currentTuple)
+            stateTuple = currentTuple[1]
+            print("",state)
+            if state == "BREAK":
+                addText("")
+                addComment("terminate program")
+                addText(asmleave)
+                break
+            elif state == "DECLARATION":
+                print("")
+                declacration_routine(stateTuple)
+            elif state == "EXPRESSION":
+                print("")
+                expression_routine(stateTuple)
+            elif state == "PRINT":
+                print("")
+                print_routine(stateTuple)
+            elif state == "PRINTLN":
+                print("")
+                println_routine(stateTuple)
+            elif state == "FORLOOP":
+                print("")
+            elif state == "WHILELOOP":
+                print("")
+                whileloop_routine(stateTuple)
+            elif state == "DO":
+                do_routine(stateTuple)
+            elif state == "IF":
+                if_routine(stateTuple)
 
-        #Next STM
-        currentTuple = currentTuple[2]
-        print("-----------------------------")
+            #Next STM
+            try:
+                currentTuple = currentTuple[2]
+            except:
+                break
+            print("-----------------------------")

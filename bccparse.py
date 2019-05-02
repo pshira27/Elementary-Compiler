@@ -214,8 +214,17 @@ def p_forLoop(p):
 		p[0] = ("ForLoop", 'for', p[3], p[4], p[6], p[8], p[10], p[13])
 
 def p_IdentifierAllAssign(p):
-	''' IDENTIFIER_ALL_ASSIGN	:	IDENTIFIER_ID "=" OperationConstant '''
-	p[0] = ("AssignValue", p[1], p[3])
+	''' IDENTIFIER_ALL_ASSIGN	:	IDENTIFIER_ID "=" CONSTANT_ALL '+' IDENTIFIER_ID
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '-' IDENTIFIER_ID 
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '*' IDENTIFIER_ID
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '/' IDENTIFIER_ID 
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '%' IDENTIFIER_ID 
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '+' CONSTANT_ALL
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '-' CONSTANT_ALL 
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '*' CONSTANT_ALL
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '/' CONSTANT_ALL 
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '%' CONSTANT_ALL '''
+	p[0] = ("AssignValue", p[1], p[3], p[4], p[5])
 
 def p_forLoopCrements(p):
 	''' For_Loop_Crement	:	IDENTIFIER INC_DEC_OPRERATOR
@@ -243,7 +252,7 @@ def p_printConsole(p):
 	
 def p_printValue(p):
 	''' Print_Value			:	empty empty empty
-							|	"," IDENTIFIER_ALL Print_Value
+							|	"," IDENTIFIER_ID Print_Value
 							|	"," CONSTANT Print_Value
 							|	"," DQ_MSG Print_Value '''
 	if(not p[3] == None):
