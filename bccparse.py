@@ -30,10 +30,10 @@ def p_input(p):
 	
 # ------------------ Declaration ------------------ #
 def p_declarationStatement(p):
-	''' Declaration 	: 	DeclarationTypeNumber IDENTIFIER_ALL ";"
-						|	DeclarationTypeNumber ARRAY_MULTI_ASSIGN ";"
-						| 	STRING IDENTIFIER ";"
-						|	STRING STRING_ASSIGN ";" '''
+	''' Declaration 	: 	DeclarationTypeNumber IDENTIFIER_ALL
+						|	DeclarationTypeNumber ARRAY_MULTI_ASSIGN '''
+	#					| 	STRING IDENTIFIER ";"
+	#					|	STRING STRING_ASSIGN ";" '''
 	p[0] = ("Declaration", p[1], p[2])
 
 def p_declarationNumberType(p):
@@ -45,17 +45,18 @@ def p_identifierAssign(p):
 	' IDENTIFIER_ASSIGN		:	IDENTIFIER "=" OperationConstant '
 	p[0] = ("AssignConstant", p[1], p[2], p[3])
 
-def p_stringAssign(p):
+"""def p_stringAssign(p):
 	''' STRING_ASSIGN		:	IDENTIFIER "=" DQ_MSG '''
-	p[0] = ("AssignString", p[1], p[2], p[3])
+	p[0] = ("AssignString", p[1], p[2], p[3])"""
 	
 def p_IdentifierArray(p):
 	' IDENTIFIER_ARRAY	:	IDENTIFIER "[" ARRAY_SIZE "]" '
 	p[0] = ("ArrayDeclaration", p[1], p[2], p[3], p[4])
 
 def p_IdentifierArrayWithAssign(p):
-	' ARRAY_MULTI_ASSIGN	:	IDENTIFIER "[" "]" "=" "{" MULTI_ASSIGN "}" '
-	p[0] = ("ArrayMultiAssign", p[1], p[2], p[3], p[4], p[6])
+	' ARRAY_MULTI_ASSIGN	:	IDENTIFIER "[" empty "]" "=" "{" MULTI_ASSIGN "}" '
+	#						|	IDENTIFIER "[" CONSTANT10 "]" "=" "{" MULTI_ASSIGN "}"
+	p[0] = ("ArrayMultiAssign", p[1], p[2], p[4], p[5], p[7])
 	
 def p_MultiAssign(p):
 	''' MULTI_ASSIGN		:	CONSTANT "," MULTI_ASSIGN
@@ -130,11 +131,11 @@ def p_operationVariableDeclaration(p):
 
 # ------------------ Expression ------------------ #
 def p_expressionStatement(p):
-	''' Expression 		: 	IDENTIFIER_ID "=" OperationConstant ";"
-						|	IDENTIFIER_ID "=" DQ_MSG ";"
-						|	ARRAY_MULTI_ASSIGN empty ";"
-						| 	IDENTIFIER_ID INC_DEC_OPRERATOR ";"
-						| 	INC_DEC_OPRERATOR IDENTIFIER_ID ";" '''
+	''' Expression 		: 	IDENTIFIER_ID "=" OperationConstant
+						|	ARRAY_MULTI_ASSIGN empty
+						| 	IDENTIFIER_ID INC_DEC_OPRERATOR
+						| 	INC_DEC_OPRERATOR IDENTIFIER_ID '''
+	#					|	IDENTIFIER_ID "=" DQ_MSG ";"
 	if(p[2] == "="):
 		p[0] = ("Expression", p[1], p[2], p[3])
 	elif(p[2] == None):
@@ -215,14 +216,14 @@ def p_forLoop(p):
 
 def p_IdentifierAllAssign(p):
 	''' IDENTIFIER_ALL_ASSIGN	:	IDENTIFIER_ID "=" CONSTANT_ALL '+' IDENTIFIER_ID
-								|	IDENTIFIER_ID "=" CONSTANT_ALL '-' IDENTIFIER_ID 
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '-' IDENTIFIER_ID
 								|	IDENTIFIER_ID "=" CONSTANT_ALL '*' IDENTIFIER_ID
-								|	IDENTIFIER_ID "=" CONSTANT_ALL '/' IDENTIFIER_ID 
-								|	IDENTIFIER_ID "=" CONSTANT_ALL '%' IDENTIFIER_ID 
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '/' IDENTIFIER_ID
+								|	IDENTIFIER_ID "=" CONSTANT_ALL '%' IDENTIFIER_ID
 								|	IDENTIFIER_ID "=" IDENTIFIER_ID '+' CONSTANT_ALL
 								|	IDENTIFIER_ID "=" IDENTIFIER_ID '-' CONSTANT_ALL 
 								|	IDENTIFIER_ID "=" IDENTIFIER_ID '*' CONSTANT_ALL
-								|	IDENTIFIER_ID "=" IDENTIFIER_ID '/' CONSTANT_ALL 
+								|	IDENTIFIER_ID "=" IDENTIFIER_ID '/' CONSTANT_ALL
 								|	IDENTIFIER_ID "=" IDENTIFIER_ID '%' CONSTANT_ALL '''
 	p[0] = ("AssignValue", p[1], p[3], p[4], p[5])
 
@@ -233,20 +234,20 @@ def p_forLoopCrements(p):
 
 # ------------------ Do While Loop ------------------ #
 def p_doWhileLoop(p):
-	''' Do_While_Loop	:	DO "{" statements "}" WHILE "(" Compare_Expreession ")" ";" '''
+	''' Do_While_Loop	:	DO "{" statements "}" WHILE "(" Compare_Expreession ")" '''
 	p[0] = ("do", p[3], 'while', p[7])
 
 # ------------------ Print ------------------ #
 def p_printConsole(p):
-	''' Print_Console		:	PRINT "(" DQ_MSG ")" ";"
-							|	PRINT "(" DQ_MSG Print_Value ")" ";"
-							|	PRINT_LN "(" DQ_MSG ")" ";"
-							|	PRINT_LN "(" DQ_MSG Print_Value ")" ";"	
-							|	PRINT_LN "(" empty empty ")" ";" '''
+	''' Print_Console		:	PRINT "(" DQ_MSG ")"
+							|	PRINT "(" DQ_MSG Print_Value ")"
+							|	PRINT_LN "(" DQ_MSG ")"
+							|	PRINT_LN "(" DQ_MSG Print_Value ")"
+							|	PRINT_LN "(" empty empty ")" '''
 	if(p[4] == ")"):
 		p[0] = (p[1], p[3])
 	elif(p[3] == None):
-		p[0] = ("newline", p[1], p[2], p[3])
+		p[0] = ("newline", p[1], p[2], p[3], p[5])
 	else:
 		p[0] = (p[1], p[3], p[4])
 	
