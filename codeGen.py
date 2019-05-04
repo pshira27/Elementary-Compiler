@@ -22,7 +22,7 @@ global_var = []
 global_if_counter = 0
 global_if_exit = 0
 
-reg_order = ["rcx", "rdx", "r8", "r9"]
+reg_order = ["rcx", "rdx", "r8", "r9", "r10", "r11"]
 
 #------------------------------------ Get Set Add Function
 def print_error(error_str, show_line=True):
@@ -69,12 +69,15 @@ def get_str(text):
 def getMultival(stm):
     ptr = stm
     strVal = ""
-    strVal += ptr[1] 
-    ptr = ptr[2]
-    while(ptr[0] == "MultiValue"):
-        strVal += ", " + ptr[1]
+    if getType(ptr) == "MultiValue":
+        strVal += ptr[1] 
         ptr = ptr[2]
-    strVal += ", " + ptr
+        while(ptr[0] == "MultiValue"):
+            strVal += ", " + ptr[1]
+            ptr = ptr[2]
+        strVal += ", " + ptr
+    else:
+        strVal += ptr
     return strVal
 
 def getListval(stm):
@@ -154,8 +157,11 @@ def declacration_routine(stm):
             arrValue = getMultival(temp[5])
             declare_var(name, arrValue)
         elif temp[0] == "AssignConstant":
-            if type(temp[3]) == tuple:      #Need operation routine
+            if getType(temp[3]) == "Operation":      #Need operation routine
+                declare_var(temp[1], "0")
+                addComment("Assign var with operation")
                 operation_routine(temp[3])
+                addText("mov [%s], rax" %  temp[1])
             else:
                 declare_var(temp[1], temp[3])
         elif temp[0] == "AssignString":
@@ -175,56 +181,66 @@ def expression_routine(stm):
             type_assign_val = getType(assign_val)
             print(type_assign_val)
             if type_assign_val == "CONSTANT":
-                if getType(var) == "ArrayDeclaration":
-                    var_name = var[1]
-                    index_arr = var[3]
-                    addText("mov rax, [%s]" % assign_val)
-                    addText("mov [%s + %s * 8], rax" % (var_name, index_arr))
-                else:
-                    var_name = var
-                    addText("mov rax, %s" % assign_val)
-                    addText("mov [%s], rax" % var_name)
-
+                var_name = var
+                addText("mov rax, %s" % assign_val)
             elif type_assign_val == "ID":
-                if getType(var) == "ArrayDeclaration":
-                    var_name = var[1]
-                    index_arr = var[3]
-                    addText("mov rax, [%s]" % assign_val)
-                    addText("mov [%s + %s * 8], rax" % (var_name, index_arr))
-                else:
-                    var_name = var
-                    addText("mov rax, %s" % assign_val)
-                    addText("mov [%s], rax" % var_name)
-
+                var_name = var
+                addText("mov rax, [%s]" % assign_val)
+            elif type_assign_val == "ArrayDeclaration":
+                var_name = assign_val[1]
+                index_arr = assign_val[3]
+                if getType(index_arr) == "CONSTANT":
+                    addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
+                elif getType(index_arr) == "ID":
+                    addText("mov R15, [%s]" % index_arr)
+                    addText("mov rax, [%s + R15 * 8]" % (var_name))
             elif type_assign_val == "Operation":
                 print("\n Enter operation via expression")
                 addComment("I don't feel so good")
-                operation_routine(assign_val)
-                try:
-                    opt = assign_val[2]
-                    if opt == "+":
-                        addText("add rax, rbx")
-                    elif opt == "-":
-                        addText("sub rbx, rax")
-                        addText("mov rax, rbx")
-                    elif opt == "*":
-                        addText("imul rax, rbx")
-                    elif opt == "/":
-                        addText("mov r9, rax")
-                        addText("mov rax, rbx")
-                        addText("mov rcx, r9")
-                        addText("idiv rcx")
-                    elif opt == "%":
-                        addText("mov r9, rax")
-                        addText("mov rax, rbx")
-                        addText("mov rcx, r9")
-                        addText("idiv rcx")
-                        addText("mov rax, rdx")
-                    else:
-                        pass
-                except:
+                # addText("xor rbx, rbx")
+                # operation_routine(assign_val)
+                opt = assign_val[2]
+                if opt == "+":
+                    addText("xor rbx, rbx")
+                    operation_routine(assign_val)
+                    addText("add rax, rbx")
+                elif opt == "-":
+                    addText("xor rbx, rbx")
+                    operation_routine(assign_val)
+                    addText("sub rbx, rax")
+                    addText("mov rax, rbx")
+                elif opt == "*":
+                    addText("mov rbx, 1")
+                    operation_routine(assign_val)
+                    addText("imul rax, rbx")
+                elif opt == "/":
+                    addText("mov rbx, 1")
+                    operation_routine(assign_val)
+                    addText("mov r9, rax")
+                    addText("mov rax, rbx")
+                    addText("mov rcx, r9")
+                    addText("idiv rcx")
+                elif opt == "%":
+                    addText("mov rbx, 1")
+                    operation_routine(assign_val)
+                    addText("mov r9, rax")
+                    addText("mov rax, rbx")
+                    addText("mov rcx, r9")
+                    addText("idiv rcx")
+                    addText("mov rax, rdx")
+                else:
                     pass
-                addText("mov [%s], %s" % (var, "rax"))
+                # noted
+            if getType(var) == "ID":
+                addText("mov [%s], rax" % (var))
+            elif getType(var) == "ArrayDeclaration":
+                var_name = var[1]
+                index_arr = var[3]
+                if getType(index_arr) == "CONSTANT":
+                    addText("mov [%s + %s * 8], rax" % (var_name, index_arr))
+                elif getType(index_arr) == "ID":
+                    addText("mov R15, [%s]" % index_arr)
+                    addText("mov [%s + R15 * 8], rax" % (var_name))
 
         elif opt == "++":
             if type(var) == tuple:
@@ -260,44 +276,124 @@ def print_routine(stm):
     print("-> print_routine", stm)
     reg_c = 1
     text = stm[1]
+    # try:
+    #     stm_inside = stm[2]
+    #     var = stm_inside[0] # (x ,sth)
+    #     if var == "ArrayDeclaration":
+    #         var = stm_inside
+    #     print(">> ",var, type(var))
+    #     try:
+    #         nxtVar = stm_inside[1]
+    #     except:
+    #         pass
+    #     while(True):
+    #         if type(var) == tuple: #ArrayDeclaration
+    #             var_name = var[1]
+    #             var_index = var[3]
+    #             addText("mov %s, [%s + %s * 8]" % (reg_order[reg_c], var_name, var_index))
+    #         else:
+    #             if var == '"':
+    #                 pass
+    #             else:
+    #                 var_name = var
+    #                 addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
+
+    #         reg_c += 1
+
+    #         if type(nxtVar) == str:
+    #             var_name = nxtVar
+    #             addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
+    #             break
+    #         else:
+    #             stm_inside = nxtVar
+    #             var = stm_inside[0] # (x ,sth)
+    #             nxtVar = stm_inside[1]
+    #             reg_c += 1
+    # except:
+    #     pass
     try:
-        stm_inside = stm[2]
-        var = stm_inside[0] # (x ,sth)
-        if var == "ArrayDeclaration":
-            var = stm_inside
-        print(">> ",var, type(var))
-        try:
-            nxtVar = stm_inside[1]
-        except:
-            pass
-        while(True):
-            if type(var) == tuple: #ArrayDeclaration
-                var_name = var[1]
-                var_index = var[3]
-                addText("mov %s, [%s + %s * 8]" % (reg_order[reg_c], var_name, var_index))
-            else:
-                if var == '"':
-                    pass
-                else:
-                    var_name = var
+        print("Type: ",getType(stm[2]), type(stm[2]), len(stm[2]))
+        if type(stm[2]) == tuple and len(stm[2]) == 2:   #Found Multi var
+            print("Multi var routine...")
+            curTuple = stm[2]
+            while(type(curTuple) == tuple and len(curTuple) == 2):
+                if getType(curTuple[0]) == "ID":
+                    print("printing ID")
+                    var_name = curTuple[0]
                     addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
-
-            reg_c += 1
-
-            if type(nxtVar) == str:
-                var_name = nxtVar
-                addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
-                break
-            else:
-                stm_inside = nxtVar
-                var = stm_inside[0] # (x ,sth)
-                nxtVar = stm_inside[1]
+                elif getType(curTuple[0]) == "CONSTANT":
+                    print("printing CONSTANT")
+                    var_name = curTuple[0]
+                    addText("mov %s, %s" % (reg_order[reg_c], var_name))
+                elif getType(curTuple[0]) == "ArrayDeclaration":
+                    print("printing ArrayDeclaration")
+                    arrTuple = curTuple[0]
+                    if getType(arrTuple[3]) == "ID":
+                        print()
+                        var_name = arrTuple[1]
+                        var_index = arrTuple[3]
+                        addText("mov R15, [%s]" % var_index)
+                        addText("mov %s, [%s + R15 * 8]" % (reg_order[reg_c], var_name))
+                    elif getType(arrTuple[3]) == "CONSTANT":
+                        print()
+                        var_name = arrTuple[1]
+                        var_index = arrTuple[3]
+                        addText("mov %s, [%s + %s * 8]" % (reg_order[reg_c], var_name, var_index)) 
                 reg_c += 1
+                curTuple = curTuple[1]
+            # Last Var
+            print("printing the lastest")
+            if getType(curTuple) == "ID":
+                print("printing ID")
+                var_name = curTuple
+                addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
+            elif getType(curTuple) == "CONSTANT":
+                print("printing CONSTANT")
+                var_name = curTuple
+                addText("mov %s, %s" % (reg_order[reg_c], var_name))
+            elif getType(curTuple) == "ArrayDeclaration":
+                print("printing ArrayDeclaration")
+                arrTuple = curTuple
+                if getType(arrTuple[3]) == "ID":
+                    print()
+                    var_name = arrTuple[1]
+                    var_index = arrTuple[3]
+                    addText("mov R15, [%s]" % var_index)
+                    addText("mov %s, [%s + R15 * 8]" % (reg_order[reg_c], var_name))
+                elif getType(arrTuple[3]) == "CONSTANT":
+                    print()
+                    var_name = arrTuple[1]
+                    var_index = arrTuple[3]
+                    addText("mov %s, [%s + %s * 8]" % (reg_order[reg_c], var_name, var_index))
+        else:
+            if getType(stm[2]) == "ID":
+                print("printing ID")
+                var_name = stm[2]
+                addText("mov %s, [%s]" % (reg_order[reg_c], var_name))
+            elif getType(stm[2]) == "CONSTANT":
+                print("printing CONSTANT")
+                var_name = stm[2]
+                addText("mov %s, %s" % (reg_order[reg_c], var_name))
+            elif getType(stm[2]) == "ArrayDeclaration":
+                print("printing ArrayDeclaration")
+                arrTuple = stm[2]
+                if getType(arrTuple[3]) == "ID":
+                    print()
+                    var_name = arrTuple[1]
+                    var_index = arrTuple[3]
+                    addText("mov R15, [%s]" % var_index)
+                    addText("mov %s, [%s + R15 * 8]" % (reg_order[reg_c], var_name))
+                elif getType(arrTuple[3]) == "CONSTANT":
+                    print()
+                    var_name = arrTuple[1]
+                    var_index = arrTuple[3]
+                    addText("mov %s, [%s + %s * 8]" % (reg_order[reg_c], var_name, var_index))    
     except:
         pass
     
     texts = get_str(text)
-    print(texts)
+    print("getting text... ",texts)
+    addComment()
     addText("mov %s, %s" % (reg_order[0], texts))
     addText("call printf")
     addText("xor %s, %s" % (reg_order[0], reg_order[0]))
@@ -366,9 +462,13 @@ def cmp_routine(stm, exit=None):
         pass
 
     if type(var_a) == tuple:
-        var_name = var_a[1]
-        index_arr = var_a[3]
-        addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
+        if getType(var_a) == "Operation":
+            print()
+            operation_routine(var_a)
+        elif getType(var_a) == "ArrayDeclaration":
+            var_name = var_a[1]
+            index_arr = var_a[3]
+            addText("mov rax, [%s + %s * 8]" % (var_name, index_arr))
     elif type(var_a) == str:
         var_name = var_a
         addText("mov rax, [%s]" % var_name)
@@ -377,9 +477,16 @@ def cmp_routine(stm, exit=None):
         addText("mov rax, %s" % var_name)
 
     if type(var_b) == tuple:
-        var_name = var_b[1]
-        index_arr = var_b[3]
-        addText("mov rbx, [%s + %s * 8]" % (var_name, index_arr))
+        if getType(var_b) == "Operation":
+            print()
+            addText("mov R14, rax")
+            operation_routine(var_b)
+            addText("mov rbx, rax")
+            addText("mov rax, rbx")
+        elif getType(var_a) == "ArrayDeclaration":
+            var_name = var_b[1]
+            index_arr = var_b[3]
+            addText("mov rbx, [%s + %s * 8]" % (var_name, index_arr))
     elif type(var_b) == str:
         var_name = var_b
         addText("mov rbx, [%s]" % var_name)
@@ -481,6 +588,7 @@ def operation_routine(stm, count = 0):
     print("operation_routine")
     a = stm[1]
     b = stm[3]
+    print(a, b, "<<<<<<<<<<<<<<<<<")
     if getType(a) == "Operation" and getType(b) != "Operation":
         a = stm[1]
         b = stm[3]
@@ -522,10 +630,20 @@ def plus_routine(a, b, count=0):
     elif a_type == 'ArrayDeclaration':
         a_name = a[1]
         a_index = a[3]
-        if count == 0:
-            addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+        if getType(a_index) == "CONSTANT":
+            if count == 0:
+                addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+            else:
+                addText("add rax, [%s + %s * 8]" % (a_name, a_index))
+        elif getType(a_index) == "ID":
+            if count == 0:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rax, [%s + R15 * 8]" % (a_name))
+            else:
+                addText("mov R15, [%s]" % a_index)
+                addText("add rax, [%s + R15 * 8]" % (a_name))
         else:
-            addText("add rax, [%s + %s * 8]" % (a_name, a_index))
+            print_error("Error array A index is invalid")
     elif a_type == "Operation":
         operation_routine(a, count)
     else:
@@ -543,9 +661,15 @@ def plus_routine(a, b, count=0):
         get_var(b)
         addText("add rax, [%s]" % b)
     elif b_type == 'ArrayDeclaration':
-        b_name = a[1]
-        b_index = a[3]
-        addText("add rax, [%s + %s * 8]" % (b_name, b_index))
+        b_name = b[1]
+        b_index = b[3]
+        if getType(b_index) == "CONSTANT":
+            addText("add rax, [%s + %s * 8]" % (b_name, b_index))
+        elif getType(a_index) == "ID":
+            addText("mov R15, [%s]" % b_index)
+            addText("add rax, [%s + R15 * 8]" % (b_name))
+        else:
+            print_error("Error array B index is invalid")
     elif b_type == "Operation":
         operation_routine(b, count)
     else:
@@ -569,10 +693,20 @@ def minus_routine(a, b, count=0):
     elif a_type == 'ArrayDeclaration':
         a_name = a[1]
         a_index = a[3]
-        if count == 0:
-            addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+        if getType(a_index) == "CONSTANT":
+            if count == 0:
+                addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+            else:
+                addText("sub rax, [%s + %s * 8]" % (a_name, a_index))
+        elif getType(a_index) == "ID":
+            if count == 0:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rax, [%s + R15 * 8]" % (a_name))
+            else:
+                addText("mov R15, [%s]" % a_index)
+                addText("sub rax, [%s + R15 * 8]" % (a_name))
         else:
-            addText("sub rax, [%s + %s * 8]" % (a_name, a_index))
+            print_error("Error array A index is invalid")
     elif a_type == "Operation":
         operation_routine(a, count)
     else:
@@ -590,9 +724,15 @@ def minus_routine(a, b, count=0):
         get_var(b)
         addText("sub rax, [%s]" % b)
     elif b_type == 'ArrayDeclaration':
-        b_name = a[1]
-        b_index = a[3]
-        addText("sub rax, [%s + %s * 8]" % (b_name, b_index))
+        b_name = b[1]
+        b_index = b[3]
+        if getType(b_index) == "CONSTANT":
+            addText("sub rax, [%s + %s * 8]" % (b_name, b_index))
+        elif getType(b_index) == "ID":
+            addText("mov R15, [%s]" % b_index)
+            addText("sub rax, [%s + R15 * 8]" % (b_name))
+        else:
+            print_error("Error array B index is invalid")
     elif b_type == "Operation":
         operation_routine(b, count)
     else:
@@ -616,10 +756,20 @@ def multiply_routine(a, b, count=0):
     elif a_type == 'ArrayDeclaration':
         a_name = a[1]
         a_index = a[3]
-        if count == 0:
-            addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+        if getType(a_index) == "CONSTANT":
+            if count == 0:
+                addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+            else:
+                addText("imul rax, [%s + %s * 8]" % (a_name, a_index))
+        elif getType(a_index) == "ID":
+            if count == 0:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rax, [%s + R15 * 8]" % (a_name))
+            else:
+                addText("mov R15, [%s]" % a_index)
+                addText("imul rax, [%s + R15 * 8]" % (a_name))
         else:
-            addText("imul rax, [%s + %s * 8]" % (a_name, a_index))
+            print_error("Error array A index is invalid")
     elif a_type == "Operation":
         operation_routine(a, count)
     else:
@@ -637,9 +787,15 @@ def multiply_routine(a, b, count=0):
         get_var(b)
         addText("imul rax, [%s]" % b)
     elif b_type == 'ArrayDeclaration':
-        b_name = a[1]
-        b_index = a[3]
-        addText("imul rax, [%s + %s * 8]" % (b_name, b_index))
+        b_name = b[1]
+        b_index = b[3]
+        if getType(b_index) == "CONSTANT":
+            addText("imul rax, [%s + %s * 8]" % (b_name, b_index))
+        elif getType(b_index) == "ID":
+            addText("mov R15, [%s]" % b_index)
+            addText("imul rax, [%s + R15 * 8]" % (b_name))
+        else:
+            print_error("Error array B index is invalid")
     elif b_type == "Operation":
         operation_routine(b, count)
     else:
@@ -666,11 +822,22 @@ def divide_routine(a, b, count=0):
     elif a_type == 'ArrayDeclaration':
         a_name = a[1]
         a_index = a[3]
-        if count == 0:
-            addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+        if getType(a_index) == "CONSTANT":
+            if count == 0:
+                addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+            else:
+                addText("mov rcx, [%s + %s * 8]" % (a_name, a_index))
+                addText("idiv rcx")
+        elif getType(a_index) == "ID":
+            if count == 0:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rax, [%s + R15 * 8]" % (a_name))
+            else:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rcx, [%s + R15 * 8]" % (a_name))
+                addText("idiv rcx")
         else:
-            addText("mov rcx, [%s + %s * 8]" % (a_name, a_index))
-            addText("idiv rcx")
+            print_error("Error array A index is invalid")
     elif a_type == "Operation":
         operation_routine(a, count)
     else:
@@ -691,10 +858,17 @@ def divide_routine(a, b, count=0):
         addText("mov rcx, [%s]" % b)
         addText("idiv rcx")
     elif b_type == 'ArrayDeclaration':
-        b_name = a[1]
-        b_index = a[3]
-        addText("mov rcx, [%s + %s * 8]" % (b_name, b_index))
-        addText("idiv rcx")
+        b_name = b[1]
+        b_index = b[3]
+        if getType(b_index) == "CONSTANT":
+            addText("mov rcx, [%s + %s * 8]" % (b_name, b_index))
+            addText("idiv rcx")
+        elif getType(b_index) == "ID":
+            addText("mov R15, [%s]" % b_index)
+            addText("mov rcx, [%s + R15 * 8]" % (b_name))
+            addText("idiv rcx")
+        else:
+            print_error("Error array A index is invalid")
     elif b_type == "Operation":
         operation_routine(b, count)
     else:
@@ -723,12 +897,22 @@ def mod_routine(a, b, count=0):
     elif a_type == 'ArrayDeclaration':
         a_name = a[1]
         a_index = a[3]
-        if count == 0:
-            addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
-        else:
-            addText("mov rcx, [%s + %s * 8]" % (a_name, a_index))
-            addText("idiv rcx")
-            addText("mov rax, rdx")
+        if getType(a_type) == "CONSTANT":
+            if count == 0:
+                addText("mov rax, [%s + %s * 8]" % (a_name, a_index))
+            else:
+                addText("mov rcx, [%s + %s * 8]" % (a_name, a_index))
+                addText("idiv rcx")
+                addText("mov rax, rdx")
+        elif getType(a_type) == "ID":
+            if count == 0:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rax, [%s + R15 * 8]" % (a_name))
+            else:
+                addText("mov R15, [%s]" % a_index)
+                addText("mov rcx, [%s + R15 * 8]" % (a_name))
+                addText("idiv rcx")
+                addText("mov rax, rdx")
     elif a_type == "Operation":
         operation_routine(a, count)
     else:
@@ -751,11 +935,17 @@ def mod_routine(a, b, count=0):
         addText("idiv rcx")
         addText("mov rax, rdx")
     elif b_type == 'ArrayDeclaration':
-        b_name = a[1]
-        b_index = a[3]
-        addText("mov rcx, [%s + %s * 8]" % (b_name, b_index))
-        addText("idiv rcx")
-        addText("mov rax, rdx")
+        b_name = b[1]
+        b_index = b[3]
+        if getType(b_index) == "CONSTANT":
+            addText("mov rcx, [%s + %s * 8]" % (b_name, b_index))
+            addText("idiv rcx")
+            addText("mov rax, rdx")
+        elif getType(b_index) == "ID":
+            addText("mov R15, [%s]" % b_index)
+            addText("mov rcx, [%s + R15 * 8]" % (b_name))
+            addText("idiv rcx")
+            addText("mov rax, rdx")
     elif b_type == "Operation":
         operation_routine(b, count)
     else:
